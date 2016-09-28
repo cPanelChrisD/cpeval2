@@ -462,9 +462,9 @@ sub check_trueuserdomains {
         if ( $opts->{'updateuserdomains'} or !$skip_update ) {
             print "${tud} doesn't exist, is more than ${max_age} minutes old, or you forced an update.\n";
             print "\nDownloading and running updateuserdomains-universal via curl...\n";
-            if ( system( 'curl -s ' . $uudu . ' | perl' ) != 0 ) {
+            if ( system( 'curl -s --connect-timeout 30 --max-time 60  ' . $uudu . ' | perl' ) != 0 ) {
                 print "\nDownloading and running updateuserdomains-universal via wget...\n";
-                if ( system( 'wget -q -O - ' . $uudu . ' | perl' ) != 0 ) {
+                if ( system( 'wget --timeout=60 -q -O - ' . $uudu . ' | perl' ) != 0 ) {
                     print "\nFailed to download and run updateuserdomains-universal!\n";
                     sleep 2;
                 }
