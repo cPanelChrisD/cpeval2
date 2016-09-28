@@ -1636,41 +1636,59 @@ sub print_prefixed_user_config_problems {
 }
 
 sub print_prefixed_php_information {
-    my ( $phpini, $memory_limit, $post_max_size, $upload_max_filesize, $date_timezone, $output_buffering ) = (undef) x 6;
-
-    if ( $is_plesk == 1 or $is_plesk_smb10 == 1 or $is_ensim == 1 ) {
-        $phpini = '/etc/php.ini';
+    my $phpini;
+    my $php_out = `php -r '\$values=array("date.timezone","memory_limit","output_buffering","post_max_size","upload_max_filesize"); foreach (\$values as &\$value) {echo \$value . "=" . ini_get(\$value) . "\n";}' 2> /dev/null`;
+    my %ini = defined($php_out) ? map { ( split( /=/, $_, 2 ) )[ 0, 1 ] } split( /\n/, $php_out ) : ();
+    if ( keys(%ini) ) {
+        $ini{'parsed'} = 'php_output';
     }
-    elsif ( $is_da == 1 or $is_cpanel == 1 ) {
-        $phpini = '/usr/local/lib/php.ini';
+    else {
+        if ( $is_plesk == 1 or $is_plesk_smb10 == 1 or $is_ensim == 1 ) {
+            $phpini = '/etc/php.ini';
+        }
+        elsif ( $is_da == 1 or ( $is_cpanel == 1 and !-e '/etc/cpanel/ea4/is_ea4' ) ) {
+            $phpini = '/usr/local/lib/php.ini';
+        }
+        if ( defined($phpini) && open my $file_fh, '<', $phpini ) {
+            while ( my $line = <$file_fh> ) {
+                if ( $line =~ m{ \A (?:[\s\t]+)? memory_limit (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
+                    $ini{'memory_limit'} = $1;
+                }
+                if ( $line =~ m{ \A (?:[\s\t]+)? post_max_size (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
+                    $ini{'post_max_size'} = $1;
+                }
+                if ( $line =~ m{ \A (?:[\s\t]+)? upload_max_filesize (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
+                    $ini{'upload_max_filesize'} = $1;
+                }
+                if ( $line =~ m{ \A date\.timezone (?:\s+)? = (?:\s+)? (?:["'])? ([^"']+) (?:["'])? (?:\s+)? \z }xms ) {
+                    $ini{'date.timezone'} = $1;
+                }
+                if ( $line =~ m{ \A \s* output_buffering \s* = ["'\s]* ([^"'\s]+) ['"\s]* \z }xms ) {
+                    $ini{'output_buffering'} = $1;
+                }
+            }
+            close $file_fh;
+            $ini{'parsed'} = $phpini;
+        }
+        else {
+            $ini{'parsed'} = 'FAIL';
+        }
     }
-
-    return if !-e $phpini;
-
-    open my $file_fh, '<', $phpini;
-    while ( my $line = <$file_fh> ) {
-        if ( $line =~ m{ \A (?:[\s\t]+)? memory_limit (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
-            $memory_limit = $1;
-            print $prefix . 'PHPINI_MEMORY_LIMIT:' . $memory_limit . "\n";
-        }
-        if ( $line =~ m{ \A (?:[\s\t]+)? post_max_size (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
-            $post_max_size = $1;
-            print $prefix . 'PHPINI_POST_MAX_SIZE:' . $post_max_size . "\n";
-        }
-        if ( $line =~ m{ \A (?:[\s\t]+)? upload_max_filesize (?:[\s\t]+)? = (?:[\s\t]+)? ["']? (\d+)M ['"]? }xms ) {
-            $upload_max_filesize = $1;
-            print $prefix . 'PHPINI_UPLOAD_MAX_FILESIZE:' . $upload_max_filesize . "\n";
-        }
-        if ( $line =~ m{ \A date\.timezone (?:\s+)? = (?:\s+)? (?:["'])? ([^/"']+) / ([^/"']+) (?:["'])? (?:\s+)? \z }xms ) {
-            $date_timezone = $1 . '/' . $2;
-            print $prefix . 'PHPINI_DATE_TIMEZONE:' . $date_timezone . "\n";
-        }
-        if ( $line =~ m{ \A \s* output_buffering \s* = ["'\s]* ([^"'\s]+) ['"\s]* \z }xms ) {
-            $output_buffering = $1;
-            print $prefix . 'PHPINI_OUTPUT_BUFFERING:' . $output_buffering . "\n";
-        }
+    foreach my $bool (qw( output_buffering )) {    # These will return 0/1 from ini_get but are Off/On in php.ini
+        next unless defined $ini{$bool};
+        $ini{$bool} = ( $ini{$bool} eq "0" ) ? "Off" : $ini{$bool};
+        $ini{$bool} = ( $ini{$bool} eq "1" ) ? "On"  : $ini{$bool};
     }
-    close $file_fh;
+    foreach my $num (qw( memory_limit post_max_size upload_max_filesize )) {    # Strip the 'M' suffix from these
+        next unless defined $ini{$num};
+        $ini{$num} =~ tr/M//d;
+    }
+    foreach my $key ( sort( keys(%ini) ) ) {
+        next if !defined( $ini{$key} );
+        my $printkey = uc($key);
+        $printkey =~ tr/./_/;
+        print $prefix . "PHPINI_" . $printkey . ":" . $ini{$key} . "\n";
+    }
 
 }
 
