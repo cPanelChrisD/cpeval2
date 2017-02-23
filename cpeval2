@@ -2416,8 +2416,8 @@ USERNAME: DOMAIN
         print "NOMBRE DE USUARIO: DOMINIO\n";
     }
 
-    for my $domain ( sort keys %badusers ) {
-        print "${domain}: $badusers{$domain}\n";
+    for my $user ( sort keys %badusers ) {
+        print "${user}: $badusers{$user}\n";
     }
 
     if ( $opts->{'es'} == 0 ) {
