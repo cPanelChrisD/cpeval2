@@ -2068,38 +2068,38 @@ sub parse_output_file {
         }
 
         if (m{ \A $panel_regex:PHPINI_MEMORY_LIMIT:(\d+) }xms) {
-            $src_phpini_memory_limit = $1;
+            $src_phpini_memory_limit = length $1 ? $1 : 'NOT SET';
         }
         elsif (m{ \A d:PHPINI_MEMORY_LIMIT:(\d+) }xms) {
-            $dst_phpini_memory_limit = $1;
+            $dst_phpini_memory_limit = length $1 ? $1 : 'NOT SET';
         }
 
         if (m{ \A $panel_regex:PHPINI_POST_MAX_SIZE:(\d+) }xms) {
-            $src_phpini_post_max_size = $1;
+            $src_phpini_post_max_size = length $1 ? $1 : 'NOT SET';
         }
         elsif (m{ \A d:PHPINI_POST_MAX_SIZE:(\d+) }xms) {
-            $dst_phpini_post_max_size = $1;
+            $dst_phpini_post_max_size = length $1 ? $1 : 'NOT SET';
         }
 
         if (m{ \A $panel_regex:PHPINI_UPLOAD_MAX_FILESIZE:(\d+) }xms) {
-            $src_phpini_upload_max_filesize = $1;
+            $src_phpini_upload_max_filesize = length $1 ? $1 : 'NOT SET';
         }
         elsif (m{ \A d:PHPINI_UPLOAD_MAX_FILESIZE:(\d+) }xms) {
-            $dst_phpini_upload_max_filesize = $1;
+            $dst_phpini_upload_max_filesize = length $1 ? $1 : 'NOT SET';
         }
 
         if (m{ \A $panel_regex:PHPINI_DATE_TIMEZONE:(.*) }xms) {
-            $src_phpini_date_timezone = $1;
+            $src_phpini_date_timezone = length $1 ? $1 : 'NOT SET';
         }
         elsif (m{ \A d:PHPINI_DATE_TIMEZONE:(.*) }xms) {
-            $dst_phpini_date_timezone = $1;
+            $dst_phpini_date_timezone = length $1 ? $1 : 'NOT SET';
         }
 
         if (m{ \A $panel_regex:PHPINI_OUTPUT_BUFFERING:(.*) }xms) {
-            $src_phpini_output_buffering = $1;
+            $src_phpini_output_buffering = length $1 ? $1 : 'NOT SET';
         }
         elsif (m{ \A d:PHPINI_OUTPUT_BUFFERING:(.*) }xms) {
-            $dst_phpini_output_buffering = $1;
+            $dst_phpini_output_buffering = length $1 ? $1 : 'NOT SET';
         }
 
         ## EULA check
