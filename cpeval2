@@ -407,7 +407,7 @@ sub get_control_panel_and_set_prefix {
             while (<$psa_fh>) {
                 if (m{ \A (\d+)\.(\d+)? }xms) {
                     $plesk_major_version = $1;
-                    $plesk_minor_version = $2 if $2;
+                    $plesk_minor_version = defined $2 ? $2 : '0';
                     if ( $plesk_major_version == 11 and $plesk_minor_version and $plesk_minor_version >= 5 ) {
 
                         #                        print_plesk_version_unsupported( "${plesk_major_version}.${plesk_minor_version}" );
@@ -1915,7 +1915,7 @@ sub parse_output_file {
     my ( $src_os_ver,  $dst_os_ver );
     my ( $src_php,     $dst_php );
     my ( $src_mysql,   $dst_mysql );
-    my $dst_ea4;
+    my $dst_ea4       = 0;
     my %badusers      = ();
     my %baduserconfig = ();
     my ( $src_dedicated_ipaddrs_used, $dst_ipaddrs_free );
@@ -1923,8 +1923,8 @@ sub parse_output_file {
     my ( @src_disk_usage, @dst_disk_usage );
     my %forwarding_domains = ();
     my @nohosting_domains;
-    my ( $src_tomcat,     $dst_tomcat );
-    my ( $src_coldfusion, $dst_coldfusion );
+    my ( $src_tomcat,     $dst_tomcat )     = ( 0, 0 );
+    my ( $src_coldfusion, $dst_coldfusion ) = ( 0, 0 );
     my @reseller_username_conflicts;
     my ( $src_phpini_memory_limit,        $dst_phpini_memory_limit );
     my ( $src_phpini_post_max_size,       $dst_phpini_post_max_size );
@@ -2153,7 +2153,7 @@ sub parse_output_file {
     print_parsed_ipaddr_info( $src_dedicated_ipaddrs_used, $dst_ipaddrs_free, @sites_on_dedicated_ipaddrs );
     print_parsed_forwarding_domain_info(%forwarding_domains);
     print_parsed_nohosting_domain_info(@nohosting_domains);
-    print_parsed_tomcat_info( $src_tomcat, $dst_tomcat );
+    print_parsed_tomcat_info( $src_tomcat, $dst_tomcat, $dst_ea4, $dst_os_ver );
     print_parsed_coldfusion_info( $src_coldfusion, $dst_coldfusion );
     print_parsed_reseller_username_conflicts(@reseller_username_conflicts);
     print_parsed_phpini_items(
@@ -2751,14 +2751,25 @@ Con el fin de hacerlos compatibles con las herramientas de transferencia, por fa
 }
 
 sub print_parsed_tomcat_info {
-    my ( $src_tomcat, $dst_tomcat ) = @_;
+    my ( $src_tomcat, $dst_tomcat, $dst_ea4, $dst_os_ver ) = @_;
 
     if ( $src_tomcat and !$dst_tomcat ) {
         print_header('Tomcat');
-
-        if ( $opts->{'es'} == 0 ) {
-            print qq{
-
+        if ( $dst_ea4 || version_compare( $dst_os_ver, qw( >= 7 ) ) ) {
+            if ( $opts->{'es'} == 0 ) {
+                print qq{
+Tomcat is installed on the $src_panel server, but is not supported on the cPanel server due to OS and/or EasyApache 4 incompatibility.
+                };
+            }
+            else {    #ES
+                print qq{
+Tomcat esta instalado en el $src_panel server, pero esto no es soportado en el servidor de cPanel debido a una incompatibilidad con el Sistema Operativo y/o EasyApache 4.
+                };
+            }
+        }
+        else {        # EA3 and CentOS <= 6
+            if ( $opts->{'es'} == 0 ) {
+                print qq{
 Tomcat is installed on the $src_panel server, but not on the cPanel server.
 
 Do you need us to install Tomcat on the cPanel server?
@@ -2766,17 +2777,17 @@ Do you need us to install Tomcat on the cPanel server?
 
 [ ] YES  [ ] NO
 
-            };
-        }
-        else {    #ES
-            print qq{
-
+                };
+            }
+            else {    #ES
+                print qq{
 Tomcat está instalado en el servidor $ src_panel, pero no en el servidor cPanel.
 
 ¿Necesiten que instalemos Tomcat en el servidor de cPanel?
 
 [ ] SI   [ ] NO
-            };
+                };
+            }
         }
     }
 }
