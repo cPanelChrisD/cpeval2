@@ -167,6 +167,9 @@ my ( $plesk_major_version, $plesk_minor_version );
 
 my @badusers;               # if mysql username conflicts are detected, skip any bad users since they need renaming anyway
 
+my $TUD_BY_USER;
+my $TUD_BY_DOMAIN;
+
 get_control_panel_and_set_prefix();
 verify_mysql_connectivity();
 
@@ -185,7 +188,7 @@ if ( $opts->{'updateuserdomains'} ) {
 
 ## behave like the original cpeval
 if ( !$opts->{'inputfile'} ) {
-    check_trueuserdomains();
+    ( $TUD_BY_USER, $TUD_BY_DOMAIN ) = _get_trueuserdomains_hashrefs();
     print_control_panel_info();
     print_os_info();
     print_perl_info();
@@ -199,7 +202,6 @@ if ( !$opts->{'inputfile'} ) {
     print_mysql_db_count();
     print_postgres_db_count();
     check_destination_var_usage();
-    print_duplicate_usernames();
     print_custom_apache_modules();
     print_custom_php_modules();
     print_htype_fwd();
@@ -214,6 +216,7 @@ if ( !$opts->{'inputfile'} ) {
     print_prefixed_php_info();
     print_prefixed_mysql_info();
     print_prefixed_bad_username_info();    # this sub MUST come before print_mysql_username_conflict_info();
+    print_prefixed_duplicate_users();
     print_prefixed_dedicated_ip_addr_info();
     print_prefixed_hosting_types();
     print_prefixed_tomcat_info();
@@ -1404,38 +1407,6 @@ sub print_custom_php_modules {
     }
 }
 
-sub print_duplicate_usernames {    # And non-unique first 8 characters as required by WHM 11.44+
-    if ( -f "/etc/trueuserdomains" ) {
-        my %user  = ();
-        my @dupes = ();
-        open( FILE, "/etc/trueuserdomains" );
-        while (<FILE>) {
-            chomp;
-            if (m/[^:]+: ([^^\s]+)(?:\^|\s*|$)/) {
-                $user{$1}{$_} = 1;
-                my $first8 = substr( $1, 0, 8 );
-                next if length($1) < 8;
-                $user{ $first8 . " (first 8)" }{$_} = 1;
-            }
-        }
-        close(FILE);
-
-        for ( sort( keys %user ) ) {
-            next if scalar( keys( %{ $user{$_} } ) ) <= 1;
-            push @dupes, " " x 4 . $_ . ":\n" . " " x 8 . join( "\n" . " " x 8, sort( keys( %{ $user{$_} } ) ) );
-        }
-
-        return if scalar @dupes < 1;
-
-        print "\nDuplicate usernames, or whose first 8 characters are not unique:\n";
-        print join( "\n", @dupes );
-        print "\n";
-    }
-    else {
-        die("/etc/trueuserdomains missing!");
-    }
-}
-
 sub _find_bin {
     my $bin = shift;
 
@@ -1462,6 +1433,32 @@ sub _find_bin {
     if ( $bin =~ /\// ) {
         return $bin;
     }
+}
+
+sub _get_trueuserdomains_hashrefs {
+    check_trueuserdomains();
+    my $tud = '/etc/trueuserdomains';
+    my $tud_by_user_ref;
+    my $tud_by_domain_ref;
+    die "${tud} does not exist!\n" unless -f $tud;
+    if ( open my $tud_fh, '<', $tud ) {
+        while (<$tud_fh>) {
+            chomp;
+            my ( $domain, $user ) = ( split( /\s*:\s*/, $_, 3 ) )[ 0, 1 ];
+
+            # strip site number from Ensim usernames
+            $user =~ s/\^site(\d+)//g;
+            push @{ $tud_by_user_ref->{$user} },     $domain;
+            push @{ $tud_by_domain_ref->{$domain} }, $user;
+        }
+        use Data::Dumper;
+        print "by_user: ",   Dumper $tud_by_user_ref;
+        print "by_domain: ", Dumper $tud_by_domain_ref;
+    }
+    else {
+        die "Could not open ${tud}: $!\n";
+    }
+    return $tud_by_user_ref, $tud_by_domain_ref;
 }
 
 sub print_prefixed_panel_info {
@@ -1523,6 +1520,29 @@ sub print_prefixed_bad_username_info {
             close $userdomains_fh;
         }
     }
+}
+
+sub print_prefixed_duplicate_users {    # WHM 11.44+ requires first 8 characters of username to be unique for database prefixing
+    my %first8;
+    my $print_dupes = sub {
+        my ( $href, $printkey ) = @_;
+        for my $key ( sort keys %{$href} ) {
+            if ( scalar( my @dupes = @{ $href->{$key} } ) > 1 ) {
+                for my $dupe ( sort @dupes ) {
+                    print $prefix . $printkey . ':' . $key . ':' . $dupe . "\n";
+                }
+            }
+        }
+    };
+    for my $user ( sort keys %{$TUD_BY_USER} ) {
+        if ( length($user) >= 8 ) {
+            my $user8 = substr( $user, 0, 8 );
+            push @{ $first8{$user8} }, $user . ' (' . $TUD_BY_USER->{$user}->[0] . ')';
+        }
+    }
+    &$print_dupes( $TUD_BY_USER,   'DUPLICATE_USER' );
+    &$print_dupes( \%first8,       'DUPLICATE_FIRST8' );
+    &$print_dupes( $TUD_BY_DOMAIN, 'DUPLICATE_DOMAIN' );
 }
 
 sub print_prefixed_dedicated_ip_addr_info {
@@ -1918,6 +1938,9 @@ sub parse_output_file {
     my $dst_ea4       = 0;
     my %badusers      = ();
     my %baduserconfig = ();
+    my %dupe_users    = ();
+    my %dupe_first8   = ();
+    my %dupe_domains  = ();
     my ( $src_dedicated_ipaddrs_used, $dst_ipaddrs_free );
     my @sites_on_dedicated_ipaddrs;
     my ( @src_disk_usage, @dst_disk_usage );
@@ -2018,6 +2041,20 @@ sub parse_output_file {
         if (m{ \A $panel_regex:BAD_USER_CONFIG:(.+):(.+):(.+) \z }xms) {
             my ( $user, $type, $value ) = ( $1, $2, $3 );
             $baduserconfig{$user}{$type} = $value;
+        }
+
+        ## Duplicate user/domain checks
+        if (m{ \A $panel_regex:DUPLICATE_USER:(.*):(.*) \z }xms) {
+            my ( $user, $domain ) = ( $1, $2 );
+            push @{ $dupe_users{$user} }, $domain;
+        }
+        if (m{ \A $panel_regex:DUPLICATE_FIRST8:(.*):(.*) \z }xms) {
+            my ( $first8, $user ) = ( $1, $2 );
+            push @{ $dupe_first8{$first8} }, $user;
+        }
+        if (m{ \A $panel_regex:DUPLICATE_DOMAIN:(.*):(.*) \z }xms) {
+            my ( $domain, $user ) = ( $1, $2 );
+            push @{ $dupe_domains{$domain} }, $user;
         }
 
         ## IP addr checks
@@ -2150,6 +2187,7 @@ sub parse_output_file {
     print_parsed_mysql_info( $src_mysql, $dst_mysql );
     print_parsed_bad_username_info(%badusers);
     print_parsed_bad_user_config_info(%baduserconfig);
+    print_parsed_duplicate_users( \%dupe_users, \%dupe_first8, \%dupe_domains );
     print_parsed_ipaddr_info( $src_dedicated_ipaddrs_used, $dst_ipaddrs_free, @sites_on_dedicated_ipaddrs );
     print_parsed_forwarding_domain_info(%forwarding_domains);
     print_parsed_nohosting_domain_info(@nohosting_domains);
@@ -2461,6 +2499,81 @@ USUARIO: DESCRIPCION
             print $user . ": " . $problem{$type_lang} . $baduserconfig{$user}{$type} . "\n\n";
         }
     }
+}
+
+sub print_parsed_duplicate_users {
+    my ( $dupe_users, $dupe_first8, $dupe_domains ) = @_;
+    my $print_dupes = sub {
+        my ( $href, $pp ) = @_;
+        $pp = defined($pp) ? $pp : '';
+        for my $key ( sort keys %{$href} ) {
+            print "\n";
+            for my $dupe ( sort @{ $href->{$key} } ) {
+                print $pp . $key . ': ' . $dupe . "\n";
+            }
+        }
+    };
+
+    if ( scalar keys %{$dupe_users} ) {
+        if ( $opts->{'es'} == 0 ) {
+            print_header('Duplicate usernames');
+            print qq{
+Some duplicated user names were found on the ${src_panel_noversion} server.  Please rename these users so that they will not cause a conflict during transfer:
+
+USERNAME: DOMAIN
+};
+        }
+        else {    #ES
+            print_header('Duplicate usernames');
+            print qq{
+Some duplicated user names were found on the ${src_panel_noversion} server.  Please rename these users so that they will not cause a conflict during transfer:
+
+USERNAME: DOMAIN
+};
+        }
+        &$print_dupes($dupe_users);
+    }
+
+    if ( scalar keys %{$dupe_first8} ) {
+        if ( $opts->{'es'} == 0 ) {
+            print_header('First 8 characters of username are not unique');
+            print qq{
+Database prefixing in WHM/cPanel requires the first 8 characters of each username to be unique, please rename the following users on the ${src_panel_noversion} server to prevent a conflict during transfer:
+
+FIRST_8: FULL_USERNAME (DOMAIN)
+};
+        }
+        else {    #ES
+            print_header('First 8 characters of username are not unique');
+            print qq{
+Database prefixing in WHM/cPanel requires the first 8 characters of each username to be unique, please rename the following users on the ${src_panel_noversion} server to prevent a conflict during transfer:
+
+FIRST_8: FULL_USERNAME (DOMAIN)
+};
+        }
+        &$print_dupes($dupe_first8);
+    }
+
+    if ( scalar keys %{$dupe_domains} ) {
+        if ( $opts->{'es'} == 0 ) {
+            print_header('Same domain owned by multiple users');
+            print qq{
+The same domain was found to be owned by multiple users which will result in a domain conflict during transfer.  Please ensure that each domain is only associated with one user on the ${src_panel_noversion} server:
+
+DOMAIN: USERNAME
+};
+        }
+        else {    #ES
+            print_header('Same domain owned by multiple users');
+            print qq{
+The same domain was found to be owned by multiple users which will result in a domain conflict during transfer.  Please ensure that each domain is only associated with one user on the ${src_panel_noversion} server:
+
+DOMAIN: USERNAME
+};
+        }
+        &$print_dupes($dupe_domains);
+    }
+
 }
 
 sub print_reseller_username_change_info {
