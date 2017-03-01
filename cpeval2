@@ -1451,9 +1451,6 @@ sub _get_trueuserdomains_hashrefs {
             push @{ $tud_by_user_ref->{$user} },     $domain;
             push @{ $tud_by_domain_ref->{$domain} }, $user;
         }
-        use Data::Dumper;
-        print "by_user: ",   Dumper $tud_by_user_ref;
-        print "by_domain: ", Dumper $tud_by_domain_ref;
     }
     else {
         die "Could not open ${tud}: $!\n";
