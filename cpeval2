@@ -1505,16 +1505,11 @@ sub print_prefixed_mysql_info {
 
 sub print_prefixed_bad_username_info {
     if ( $PREFIX =~ /^s/ ) {
-        if ( -f '/etc/trueuserdomains' ) {
-            open my $userdomains_fh, '<', '/etc/trueuserdomains' or die "Could not open /etc/trueuserdomains: $!\n";
-            while (<$userdomains_fh>) {
-                chomp;
-                if (m{ [^:]: \s (.*[\-\._]|test|[0-9]|[A-Z]) }xms) {
-                    print $PREFIX . 'BADUSER:' . "$_\n";
-                    push @BADUSERS, $_;
-                }
+        for my $user ( sort keys %{$TUD_BY_USER} ) {
+            if ( $user =~ m{ \A (.*[\-\._]|test|[0-9]|[A-Z]) }xms ) {
+                print $PREFIX . 'BADUSER:' . $user . "\n";
+                push @BADUSERS, $user;
             }
-            close $userdomains_fh;
         }
     }
 }
@@ -1733,24 +1728,14 @@ sub print_prefixed_mysql_username_conflict_info {
     return if ( $IS_PLESK == 0 and $IS_PLESK_SMB10 == 0 );
 
     my ( $user, $domain );
-    my %trueuserdomains;
     my %mysql_layout;
     my @seen;
-
-    open my $fh, '<', '/etc/trueuserdomains' or die $!;
-    while (<$fh>) {
-        chomp;
-        ( $domain, $user ) = split /:/, $_;
-        $user =~ s/\s+//g;
-        $trueuserdomains{$domain} = $user;
-    }
-    close $fh;
 
     my $domain_ids_and_names = `mysql -BN psa -e 'select id,name from domains order by id'`;
     my %domain_ids_and_names = split /\s/, $domain_ids_and_names;
 
     while ( my ( $domain_id, $trueuserdomain ) = each(%domain_ids_and_names) ) {
-        next if not exists $trueuserdomains{$trueuserdomain};
+        next if not exists $TUD_BY_DOMAIN->{$trueuserdomain}->[0];
         my @dbusers = `mysql -BN psa -e '
                    select
                         db_users.login
@@ -1762,17 +1747,17 @@ sub print_prefixed_mysql_username_conflict_info {
                        data_bases.type = "mysql"
                        and domains.id = $domain_id'`;
         next if !@dbusers;
-        $mysql_layout{$trueuserdomain}{ $trueuserdomains{$trueuserdomain} } = [@dbusers];
+        $mysql_layout{$trueuserdomain}{ $TUD_BY_DOMAIN->{$trueuserdomain}->[0] } = [@dbusers];
     }
 
-    for my $sysuser ( values %trueuserdomains ) {
+    for my $sysuser ( keys %{$TUD_BY_USER} ) {
         next if grep { /^$sysuser$/ } @seen;
         next if grep { /^$sysuser$/ } @BADUSERS;    # bad usernames must be renamed anyway
         for my $domain ( keys %mysql_layout ) {
             next if ( exists $mysql_layout{$domain}{$sysuser} );    # Plesk user alice can have a mysql user of the same name
-            if ( grep { /^$sysuser$/ } @{ $mysql_layout{$domain}{ $trueuserdomains{$domain} } } ) {
-                for my $d ( keys %trueuserdomains ) {
-                    if ( $trueuserdomains{$d} eq $sysuser ) {
+            if ( grep { /^$sysuser$/ } @{ $mysql_layout{$domain}{ $TUD_BY_DOMAIN->{$domain}->[0] } } ) {
+                for my $d ( keys %{$TUD_BY_DOMAIN} ) {
+                    if ( exists $TUD_BY_DOMAIN->{$d}->[0] && $TUD_BY_DOMAIN->{$d}->[0] eq $sysuser ) {
                         print $PREFIX . 'MYSQL_CONFLICT:' . "${domain}:${sysuser}:${d}\n";
                         push @seen, $sysuser;                       # avoid checking the same user twice
                         last;
@@ -3403,16 +3388,7 @@ sub submit_stats_info {
     return if !( $panelmajor =~ /^\d+$/ );
     $panelminor = $panelminor ? $panelminor : '0';
 
-    if ( -f '/etc/trueuserdomains' ) {
-        chomp( $account_num = `sort -u /etc/trueuserdomains | wc -l` );
-    }
-
-    if ( $account_num && $account_num =~ /(\d+)/ ) {
-        $account_num = $1;
-    }
-    else {
-        $account_num = '0';
-    }
+    $account_num = scalar keys %{$TUD_BY_USER};
 
     my $submit = "panelname=" . $panelname . "&panelver=" . $panelmajor . "." . $panelminor . "&numaccount=" . $account_num;
     my $header = "GET /submit.cgi?" . $submit . " HTTP/1.1\r\nHost: " . $submit_host . "\r\n\r\n";
