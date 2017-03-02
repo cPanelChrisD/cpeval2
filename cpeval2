@@ -2506,11 +2506,11 @@ USERNAME: DOMAIN
 };
         }
         else {    #ES
-            print_header('Duplicate usernames');
+            print_header('Nombres de usuarios duplicados');
             print qq{
-Some duplicated user names were found on the ${SRC_PANEL_NOVERSION} server.  Please rename these users so that they will not cause a conflict during transfer:
+Se han encontrado nombres de usuarios duplicados en el servidor ${SRC_PANEL_NOVERSION}. Por favor cambie el nombre de estos usuarios para que no haya un conflicto durante la transferencia:
 
-USERNAME: DOMAIN
+USUARIO: DOMINIO
 };
         }
         &$print_dupes($dupe_users);
@@ -2526,11 +2526,11 @@ FIRST_8: FULL_USERNAME (DOMAIN)
 };
         }
         else {    #ES
-            print_header('First 8 characters of username are not unique');
+            print_header('Los primeros 8 caracteres del nombre de usuario no son únicos');
             print qq{
-Database prefixing in WHM/cPanel requires the first 8 characters of each username to be unique, please rename the following users on the ${SRC_PANEL_NOVERSION} server to prevent a conflict during transfer:
+Prefijo de base de datos en WHM/cPanel requiere que los primeros 8 caracteres de cada nombre de usuario sea único, por favor, cambie el nombre de los siguientes usuarios en el servidor de ${SRC_PANEL_NOVERSION} para evitar un conflicto durante la transferencia:
 
-FIRST_8: FULL_USERNAME (DOMAIN)
+PRIMEROS_8: USUARIO_COMPLETO (DOMINIO)
 };
         }
         &$print_dupes($dupe_first8);
@@ -2546,11 +2546,11 @@ DOMAIN: USERNAME
 };
         }
         else {    #ES
-            print_header('Same domain owned by multiple users');
+            print_header('Multiples usuarios son dueños del mismo dominio');
             print qq{
-The same domain was found to be owned by multiple users which will result in a domain conflict during transfer.  Please ensure that each domain is only associated with one user on the ${SRC_PANEL_NOVERSION} server:
+El mismo dominio fue encontrado ser poseído por varios usuarios lo cual causara un conflicto de dominio durante la transferencia. Asegúrese de que cada dominio solamente está asociado a un usuario dentro del servidor de ${SRC_PANEL_NOVERSION}:
 
-DOMAIN: USERNAME
+DOMINIO: USUARIO
 };
         }
         &$print_dupes($dupe_domains);
