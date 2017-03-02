@@ -3447,8 +3447,9 @@ sub get_ticket {
     }
     if ( !$ticket || $ticket !~ /^\d{7,10}$/ ) {
         print "Unable to auto-detect valid migration ticket number, please enter a valid ticket number (7 to 10 digits) or leave blank to skip: ";
-        chomp( $ticket = <STDIN> );
-        if ( $ticket =~ /^\d{7,10}$/ ) {
+        $ticket = <STDIN>;
+        chomp $ticket if defined $ticket;
+        if ( defined $ticket && $ticket =~ /^\d{7,10}$/ ) {
             return $ticket;
         }
         else {
